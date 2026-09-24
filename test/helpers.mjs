@@ -2,8 +2,19 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+const tempDirs = []
+
+process.on('exit', () => {
+  for (const dir of tempDirs) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+    } catch {}
+  }
+})
+
 export function tempHome() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'autopilot-'))
+  tempDirs.push(dir)
   process.env.AUTOPILOT_USER_HOME = dir
   process.env.AUTOPILOT_CLAUDE_DIR = path.join(dir, 'claude')
   process.env.AUTOPILOT_HOME = path.join(dir, 'data')
