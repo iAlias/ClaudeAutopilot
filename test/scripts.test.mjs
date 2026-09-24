@@ -2,13 +2,14 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { tempHome } from './helpers.mjs'
 import { claudeDir, dataDir } from '../lib/paths.mjs'
 import { readJson, writeJson } from '../lib/json-store.mjs'
 import { readState } from '../lib/state.mjs'
 import { computeStats } from '../lib/history.mjs'
-import { renderStats } from '../scripts/stats.mjs'
+import { renderStats, renderResumes } from '../scripts/stats.mjs'
 import { plan, apply, statuslineCommand } from '../scripts/setup.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -83,4 +84,27 @@ test('a settings.json with a UTF-8 BOM is read by plan and apply', () => {
   assert.equal(s.model, 'opus')
   assert.equal(s.statusLine.command, statuslineCommand())
   assert.equal(readState().wrappedStatusline, 'node old.mjs')
+})
+
+test('renderResumes counts resumes by outcome and channel', () => {
+  assert.equal(renderResumes({}), null)
+  const sessions = {
+    a: { status: 'done', via: 'message' },
+    b: { status: 'done', via: 'resume' },
+    c: { status: 'done', via: 'resume' },
+    d: { status: 'done', via: null, note: 'user resumed manually' },
+    e: { status: 'skipped', note: 'weekly limit' },
+    f: { status: 'failed', via: 'resume' },
+    g: { status: 'failed', via: 'message' },
+  }
+  assert.equal(renderResumes(sessions), 'Resumes: done 4 (message 1, background 2, manual 1) · skipped 1 · failed 2')
+  assert.equal(renderResumes({ ...sessions, h: { status: 'waiting' }, i: null }), 'Resumes: done 4 (message 1, background 2, manual 1) · skipped 1 · failed 2 · waiting 1')
+  assert.equal(renderResumes({ ...sessions, h: { status: 'waiting' }, j: { status: 'lost' } }), 'Resumes: done 4 (message 1, background 2, manual 1) · skipped 1 · failed 2 · lost 1 · waiting 1')
+})
+
+test('the stats script appends the resume line after the table', () => {
+  writeJson(path.join(dataDir(), 'resume.json'), { sessions: { a: { status: 'done', via: 'message' } } })
+  const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'stats.mjs')], { env: process.env, encoding: 'utf8' })
+  assert.equal(r.status, 0)
+  assert.match(r.stdout, /^No turns recorded yet\.\r?\n\r?\nResumes: done 1 \(message 1, background 0\) · skipped 0 · failed 0/)
 })

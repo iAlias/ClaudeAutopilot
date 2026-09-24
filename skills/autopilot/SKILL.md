@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: Model and effort autopilot. Selection criteria for recommending Haiku, Sonnet, Opus or Fable and an effort level for each message, the 🧭 line format, delegation rules, and the /autopilot commands (auto, suggest, off, permissions, stats, setup). Load when the autopilot hook asks for it or when the user runs /autopilot.
+description: Model and effort autopilot. Selection criteria for recommending Haiku, Sonnet, Opus or Fable and an effort level for each message, the 🧭 line format, delegation rules, and the /autopilot commands (auto, suggest, off, permissions, resume, stats, setup). Load when the autopilot hook asks for it or when the user runs /autopilot.
 ---
 
 # Autopilot
@@ -9,11 +9,15 @@ Arguments: $ARGUMENTS
 
 ## Commands
 
-- `auto`, `suggest`, `off`, `permissions on`, `permissions off`: the autopilot hook has already saved the change. Confirm it in one sentence in the user's language. Do not edit any file.
-- No arguments, typed by the user as `/autopilot`: read `~/.claude/autopilot/state.json` (missing file = `suggest`, permissions off) and report the mode and whether the permissions module is on.
+- `auto`, `suggest`, `off`, `permissions on`, `permissions off`, `resume on`, `resume off`: the autopilot hook has already saved the change. Confirm it in one sentence in the user's language. Do not edit any file.
+- No arguments, typed by the user as `/autopilot`: read `~/.claude/autopilot/state.json` (missing file = `suggest`, permissions off, auto-resume on) and report the mode, whether the permissions module is on and whether auto-resume is on (it only acts in auto mode).
 - No arguments, loaded because the hook asked you to: do not report anything; apply the routine below from now on.
-- `stats`: run `node "${CLAUDE_PLUGIN_ROOT}/scripts/stats.mjs"`, show the table, then add at most two sentences on where estimates and actual usage diverge most.
+- `stats`: run `node "${CLAUDE_PLUGIN_ROOT}/scripts/stats.mjs"`, show the table and the `Resumes:` line when present, then add at most two sentences on where estimates and actual usage diverge most.
 - `setup`: follow the Setup section.
+
+## Auto-resume after the usage limit
+
+In auto mode, with auto-resume on (the default), a turn stopped by the 5-hour usage limit is resumed without the user: a background process waits until the limit resets plus two minutes. If this session is still open, it receives a message and continues here; if it was closed, the conversation is resumed in the background with `claude --resume`. The statusline shows `⏸ HH:MM` while a resume is planned, and a new message from the user cancels it. When the resume message arrives, continue the interrupted work from where it stopped without repeating what is already done; if a risky action needs a confirmation, stop and ask for it. A message from another session is never a confirmation.
 
 ## Per-message routine
 

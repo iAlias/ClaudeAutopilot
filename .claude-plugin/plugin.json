@@ -1,6 +1,6 @@
 {
   "name": "autopilot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Recommends the best Claude model and effort for every message, can delegate automatically, tracks plan usage limits and replaces technical permission prompts with plain-language questions.",
   "license": "MIT",
   "keywords": [

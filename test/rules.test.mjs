@@ -249,3 +249,50 @@ test('git global options do not backtrack exponentially', () => {
   assert.ok(Date.now() - start < 200, `${Date.now() - start} ms`)
   assert.equal(classify('Bash', { command: 'git -C x push' }, ctx()).ruleId, 'git-push')
 })
+
+test('a folder name that only contains "autopilot" is not the protected data folder', () => {
+  const inClaude = ctx({ cwd: claude })
+  const repo = path.join(home, 'claude-autopilot')
+  assert.notEqual(sh('cd ~/claude-autopilot && git status --short && npm test', inClaude), 'risky')
+  assert.notEqual(cat('Edit', { file_path: path.join(repo, 'lib', 'rules.mjs') }, inClaude), 'risky')
+  assert.equal(classify('Bash', { command: 'echo {} > autopilot/state.json' }, inClaude).ruleId, 'protected')
+  assert.equal(classify('Bash', { command: 'echo {} > ./autopilot/state.json' }, inClaude).ruleId, 'protected')
+})
+
+test('quoted separators and for loops do not turn a read into a write', () => {
+  assert.notEqual(sh(`grep '"blocked"\|"approved"' ~/.claude/autopilot/permissions.log | tail -6`), 'risky')
+  assert.notEqual(sh('for f in .claude/settings.json .claude/settings.local.json; do echo "== $f"; cat "$f"; done'), 'risky')
+  assert.equal(sh('echo "$(true; rm ~/.claude/settings.json)"'), 'risky')
+  assert.equal(sh('for f in a; do echo x > ~/.claude/settings.json; done'), 'risky')
+  assert.equal(sh('grep "a|b" x; rm ~/.claude/autopilot/state.json'), 'risky')
+})
+
+test('an escaped quote does not hide the commands after it', () => {
+  assert.equal(sh(String.raw`echo \" ; cp x ~/.claude/settings.json ; echo \"`), 'risky')
+  assert.equal(sh(String.raw`echo \' ; cp x ~/.claude/settings.json ; echo \'`), 'risky')
+  assert.equal(cat('PowerShell', { command: String.raw`Write-Host "a\"; cp x ~/.claude/settings.json; Write-Host "b"` }), 'risky')
+  assert.notEqual(sh(String.raw`grep "a\"; b" ~/.claude/autopilot/permissions.log`), 'risky')
+})
+
+test('a relative path that climbs back into the data folder is protected', () => {
+  assert.equal(classify('Bash', { command: 'cp x ../.claude/autopilot/state.json' }, ctx({ cwd: claude })).ruleId, 'protected')
+})
+
+test('inside the data or plugins folder, reads pass and only writes or other commands are protected', () => {
+  const inData = ctx({ cwd: path.join(claude, 'autopilot') })
+  const inPlugins = ctx({ cwd: path.join(claude, 'plugins', 'cache') })
+  const id = (command, c) => classify('Bash', { command }, c).ruleId
+  for (const c of ['wc -l permissions.log', 'cat state.json', 'ls -la', 'grep blocked permissions.log', 'tail -5 permissions.log | cut -c1-80', 'cat permissions.log 2>/dev/null | sort | uniq -c', 'stat state.json', 'cd .. && ls']) assert.notEqual(sh(c, inData), 'risky', c)
+  for (const c of ['find . -name "*.json"', 'find . -type f | wc -l']) assert.notEqual(sh(c, inPlugins), 'risky', c)
+  assert.equal(sh('wc -l permissions.log', inData), 'safe')
+  for (const c of ['echo x > state.json', 'node -e "require(\'fs\').writeFileSync(\'state.json\', \'{}\')"', 'sort -o state.json state.json', 'sort --output=state.json x', 'uniq a.log b.log', 'cp x state.json', 'cat x | tee state.json', 'rg --pre ./x.sh foo', 'sort -uo state.json x', 'find.exe . -exec touch {} +']) assert.equal(id(c, inData), 'protected', c)
+  for (const c of ['find . -exec touch {} \;', 'find . -fprint list.txt', 'find . -execdir cat {} +', 'find . -ok cat {} ;']) assert.equal(id(c, inPlugins), 'protected', c)
+})
+
+test('inside the plugins folder, git status, log and diff are read-only', () => {
+  const inPlugins = ctx({ cwd: path.join(claude, 'plugins', 'marketplaces', 'claude-autopilot') })
+  for (const c of ['git status', 'git status --short', 'git log --oneline -5', 'git diff', 'git diff HEAD~1 -- hooks', 'git status && git log -1', 'cd .. && git status']) assert.notEqual(sh(c, inPlugins), 'risky', c)
+  for (const c of ['git diff --output=x.patch', 'git log --output x', 'git diff --ext-diff', 'git commit -m x', 'git checkout .', 'git pull', 'git status > x.txt', 'git stash']) assert.equal(sh(c, inPlugins), 'risky', c)
+  assert.equal(sh('cd ~/.claude/plugins && git pull'), 'risky')
+  assert.notEqual(sh('cd ~/.claude/plugins/marketplaces/x && git log -3'), 'risky')
+})

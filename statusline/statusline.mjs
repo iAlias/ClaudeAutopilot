@@ -11,6 +11,7 @@ const GREEN = '\x1b[32m'
 const YELLOW = '\x1b[33m'
 const RED = '\x1b[31m'
 const WEEK_MS = 7 * 24 * 3600 * 1000
+const RESUME_MARGIN_MS = 120000
 const dataDir = process.env.AUTOPILOT_HOME || path.join(os.homedir(), '.claude', 'autopilot')
 
 const sev = (p) => (p >= 90 ? RED : p >= 70 ? YELLOW : GREEN)
@@ -49,6 +50,7 @@ const readJson = (file, fallback) => {
 }
 
 const num = (v) => (Number.isFinite(v) ? v : null)
+const ms = (sec) => (Number.isFinite(sec) ? sec * 1000 : null)
 
 function recordUsage(sessionId, rl, now) {
   const five = num(rl?.five_hour?.used_percentage)
@@ -57,7 +59,13 @@ function recordUsage(sessionId, rl, now) {
   const file = path.join(dataDir, 'usage.json')
   const data = readJson(file, null)
   const sessions = data && typeof data.sessions === 'object' && data.sessions ? data.sessions : {}
-  sessions[sessionId ?? 'unknown'] = { five_hour: five, seven_day: seven, at: now }
+  sessions[sessionId ?? 'unknown'] = {
+    five_hour: five,
+    seven_day: seven,
+    five_hour_resets_at: ms(rl?.five_hour?.resets_at),
+    seven_day_resets_at: ms(rl?.seven_day?.resets_at),
+    at: now,
+  }
   for (const [id, s] of Object.entries(sessions)) {
     if (!s || !Number.isFinite(s.at) || now - s.at > WEEK_MS) delete sessions[id]
   }
@@ -87,7 +95,7 @@ const rawState = readJson(path.join(dataDir, 'state.json'), null)
 const state = rawState && typeof rawState === 'object' ? rawState : {}
 
 function findBash() {
-  if (process.platform !== 'win32') return null
+  if (process.platform !== 'win32' || process.env.AUTOPILOT_STATUSLINE_SHELL === 'system') return null
   const fromEnv = process.env.CLAUDE_CODE_GIT_BASH_PATH
   if (fromEnv && fs.existsSync(fromEnv)) return fromEnv
   for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
@@ -101,7 +109,7 @@ function findBash() {
 function runWrapped(command) {
   const options = { input: raw, encoding: 'utf8', timeout: 5000, windowsHide: true }
   const bash = findBash()
-  const r = bash ? spawnSync(bash, ['-lc', command], options) : spawnSync(command, { ...options, shell: true })
+  const r = bash ? spawnSync(bash, ['-c', command], options) : spawnSync(command, { ...options, shell: true })
   if (r.error || r.status !== 0 || !r.stdout || !r.stdout.trim()) return null
   return r.stdout
 }
@@ -133,6 +141,15 @@ if (Number.isFinite(usd)) head.push(`${DIM}$${usd.toFixed(2)}${R}`)
 
 head.push(mode === 'off' ? `${DIM}🧭 off${R}` : `${mode === 'auto' ? GREEN : CYAN}🧭 ${mode}${R}`)
 if (state.permissions === true) head.push(`${GREEN}🛡${R}`)
+
+const resumeAt = (sessionId) => {
+  const raw = readJson(path.join(dataDir, 'resume.json'), null)
+  const record = raw && typeof raw.sessions === 'object' && raw.sessions ? raw.sessions[sessionId] : null
+  if (!record || record.status !== 'waiting' || !Number.isFinite(record.resetAt)) return null
+  return fmtReset((record.resetAt + RESUME_MARGIN_MS) / 1000)
+}
+const resume = typeof data.session_id === 'string' ? resumeAt(data.session_id) : null
+if (resume) head.push(`${YELLOW}⏸ ${resume}${R}`)
 
 const rl = data.rate_limits ?? {}
 const quotas = [

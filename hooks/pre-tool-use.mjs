@@ -4,6 +4,7 @@ import { homeDir, dataDir, claudeDir, dataFile } from '../lib/paths.mjs'
 import { loadRules, classify } from '../lib/rules.mjs'
 import { actionHash, addPending, consumeApproval } from '../lib/approvals.mjs'
 import { logPermission } from '../lib/log.mjs'
+import { turnStartedAt } from '../lib/turns.mjs'
 import { readJson, writeJson } from '../lib/json-store.mjs'
 
 const decide = (decision, reason) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: reason } })
@@ -13,11 +14,13 @@ export function denyReason(description) {
     `autopilot: this action needs the user's confirmation (${description}).`,
     'Do not retry it and do not look for a workaround.',
     "Ask the user in plain language, in their own language, without showing the technical command unless they ask: say in one sentence what you need to do for the task and what effect it will have. Then stop and wait for the answer.",
-    "If the user confirms, run exactly the same action again. If you are a subagent, end your work and state in your final report that this action is waiting for the user's confirmation, describing it in plain words.",
+    `A single "yes" unlocks all actions waiting for the user's confirmation, so ask one question that lists all of them in plain words, not only this one, so the user knows everything their "yes" will allow.`,
+    "If the user confirms, run exactly the same actions again. If you are a subagent, end your work and state in your final report that this action is waiting for the user's confirmation, describing it in plain words.",
   ].join(' ')
 }
 
 export function handle(input, now = Date.now()) {
+  if (process.env.AUTOPILOT_RESUMER === 'messenger') return null
   if (!readState().permissions || input.permission_mode === 'plan') return null
   const sessionId = input.session_id ?? 'unknown'
   const tool = String(input.tool_name ?? '')
@@ -44,7 +47,7 @@ export function handle(input, now = Date.now()) {
     logPermission({ ts: now, sessionId, tool, category: 'approved', ruleId: result.ruleId, summary })
     return decide('allow', 'autopilot: approved by the user')
   }
-  addPending(sessionId, hash, result.description, now)
+  addPending(sessionId, hash, result.description, now, turnStartedAt(sessionId))
   logPermission({ ts: now, sessionId, tool, category: 'blocked', ruleId: result.ruleId, summary })
   return decide('deny', denyReason(result.description))
 }

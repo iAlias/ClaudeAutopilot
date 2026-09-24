@@ -22,7 +22,7 @@ const base = (over = {}) => ({
 test('latestUsage picks the most recent snapshot and tolerates bad files', () => {
   assert.equal(latestUsage(), null)
   writeJson(dataFile('usage.json'), { sessions: { a: { five_hour: 10, seven_day: 2, at: 100 }, b: { five_hour: 12, seven_day: 3, at: 200 } } })
-  assert.deepEqual(latestUsage(), { sessionId: 'b', five_hour: 12, seven_day: 3, at: 200 })
+  assert.deepEqual(latestUsage(), { sessionId: 'b', five_hour: 12, seven_day: 3, five_hour_resets_at: null, seven_day_resets_at: null, at: 200 })
   fs.writeFileSync(dataFile('usage.json'), 'nope')
   assert.equal(latestUsage(), null)
 })

@@ -7,6 +7,7 @@ import { dataFile, dataDir } from '../lib/paths.mjs'
 import { writeState } from '../lib/state.mjs'
 import { resolvePending } from '../lib/approvals.mjs'
 import { writeJson, readJsonl } from '../lib/json-store.mjs'
+import { startTurn } from '../lib/turns.mjs'
 import { handle } from '../hooks/pre-tool-use.mjs'
 
 let cwd
@@ -75,4 +76,48 @@ test('plan mode gets no decision for any tool', () => {
   assert.equal(handle({ ...bash('git status'), permission_mode: 'plan' }), null)
   assert.equal(handle({ session_id: 's1', tool_name: 'Read', tool_input: { file_path: 'a.js' }, cwd, permission_mode: 'plan' }), null)
   assert.equal(fs.existsSync(dataFile('pending.json')), false)
+})
+
+test('two actions blocked in the same turn are both unlocked by one confirmation', () => {
+  writeState({ permissions: true })
+  const push = handle(bash('git push origin main'))
+  const wipe = handle(bash('rm -rf ../old-build'))
+  assert.equal(decision(push), 'deny')
+  assert.equal(decision(wipe), 'deny')
+  for (const out of [push, wipe]) assert.match(out.hookSpecificOutput.permissionDecisionReason, /all actions waiting for the user's confirmation/i)
+  assert.equal(resolvePending('s1', 'sì').approved.length, 2)
+  assert.equal(decision(handle(bash('git push origin main'))), 'allow')
+  assert.equal(decision(handle(bash('rm -rf ../old-build'))), 'allow')
+  assert.equal(decision(handle(bash('rm -rf ../old-build'))), 'deny')
+})
+
+test('the messenger run started by the resumer gets no decision and blocks nothing', () => {
+  writeState({ permissions: true })
+  const saved = process.env.AUTOPILOT_RESUMER
+  process.env.AUTOPILOT_RESUMER = 'messenger'
+  try {
+    assert.equal(handle(bash('git push origin main')), null)
+    assert.equal(handle({ session_id: 's1', tool_name: 'SendMessage', tool_input: { to: 'x' }, cwd }), null)
+  } finally {
+    if (saved === undefined) delete process.env.AUTOPILOT_RESUMER
+    else process.env.AUTOPILOT_RESUMER = saved
+  }
+  assert.equal(fs.existsSync(dataFile('pending.json')), false)
+  assert.equal(fs.existsSync(dataFile('permissions.log')), false)
+  assert.equal(decision(handle(bash('git push origin main'))), 'deny')
+})
+
+test('blocked actions are tagged with the start of the current turn and older turns expire', () => {
+  writeState({ permissions: true })
+  startTurn('s1', null, 1000)
+  handle(bash('git push origin main'), 1500)
+  startTurn('s1', null, 5000)
+  handle(bash('rm -rf ../old-build'), 5500)
+  const pending = JSON.parse(fs.readFileSync(dataFile('pending.json'), 'utf8'))
+  assert.deepEqual(pending.map((e) => e.turnStart), [1000, 5000])
+  const r = resolvePending('s1', 'sì', 6000)
+  assert.equal(r.approved.length, 1)
+  assert.equal(r.expired.length, 1)
+  assert.equal(decision(handle(bash('rm -rf ../old-build'), 6100)), 'allow')
+  assert.equal(decision(handle(bash('git push origin main'), 6200)), 'deny')
 })

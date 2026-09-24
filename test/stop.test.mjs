@@ -61,3 +61,18 @@ test('subagent-stop records only autopilot agents', () => {
   subagentStop({ session_id: 's1' })
   assert.deepEqual(endTurn('s1').agents, ['autopilot-opus-high'])
 })
+
+for (const [marker, recorded] of [['messenger', 0], ['resume', 1]]) {
+  test(`stop inside a ${marker} run of the resumer ${recorded ? 'records' : 'skips'} the turn`, () => {
+    const saved = process.env.AUTOPILOT_RESUMER
+    process.env.AUTOPILOT_RESUMER = marker
+    try {
+      startTurn('s1', null, 1000)
+      stop({ session_id: 's1', transcript_path: transcript('x') }, 2000)
+    } finally {
+      if (saved === undefined) delete process.env.AUTOPILOT_RESUMER
+      else process.env.AUTOPILOT_RESUMER = saved
+    }
+    assert.equal(readHistory().length, recorded)
+  })
+}
