@@ -151,6 +151,14 @@ test('writing autopilot or Claude settings files is risky', () => {
   assert.notEqual(sh('cat ~/.claude/settings.json | jq .'), 'risky')
 })
 
+test('reading a protected file with a harmless fallback is not risky', () => {
+  assert.notEqual(sh('cat ~/.claude/autopilot/state.json 2>/dev/null || echo MISSING'), 'risky')
+  assert.notEqual(sh('cat ~/.claude/settings.json || echo none'), 'risky')
+  assert.equal(classify('Bash', { command: 'echo x > ~/.claude/autopilot/approvals.json' }, ctx()).ruleId, 'protected')
+  assert.equal(classify('Bash', { command: 'echo x >> ~/.claude/settings.json' }, ctx()).ruleId, 'protected')
+  assert.equal(sh('cat ~/.claude/autopilot/state.json | tee ~/.claude/autopilot/state.json'), 'risky')
+})
+
 test('file tools', () => {
   assert.equal(cat('Write', { file_path: path.join(cwd, 'a.js') }), 'safe')
   assert.equal(cat('Write', { file_path: path.join(home, 'other', 'a.js') }), 'other')
