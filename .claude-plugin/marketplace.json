@@ -1,0 +1,16 @@
+{
+  "name": "claude-autopilot",
+  "owner": {
+    "name": "Restore"
+  },
+  "plugins": [
+    {
+      "name": "autopilot",
+      "source": "./",
+      "description": "Model and effort autopilot for Claude Code, with usage-limit tracking and plain-language permissions."
+    }
+  ],
+  "metadata": {
+    "description": "Claude Autopilot: model and effort recommendations, automatic delegation, usage-limit tracking and plain-language permissions for Claude Code."
+  }
+}

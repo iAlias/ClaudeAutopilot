@@ -1,0 +1,11 @@
+{
+  "name": "claude-autopilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "agents": "node scripts/generate-agents.mjs"
+  },
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "autopilot",
+  "version": "0.1.0",
+  "description": "Recommends the best Claude model and effort for every message, can delegate automatically, tracks plan usage limits and replaces technical permission prompts with plain-language questions.",
+  "license": "MIT",
+  "keywords": [
+    "model-routing",
+    "effort",
+    "usage-limits",
+    "statusline",
+    "permissions",
+    "delegation",
+    "haiku",
+    "sonnet",
+    "opus",
+    "fable"
+  ],
+  "author": {
+    "name": "Restore",
+    "url": "https://github.com/iAlias"
+  },
+  "homepage": "https://github.com/iAlias/ClaudeAutopilot",
+  "repository": "https://github.com/iAlias/ClaudeAutopilot"
+}
